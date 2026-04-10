@@ -194,6 +194,22 @@ log.record("assessed", "ACME-001", detail="score=72.4")
 log.record("finding_resolved", "ACME-001", detail="CIS-3.3")
 ```
 
+## Changelog
+
+### v1.2.1 (2026-04-10)
+- Added Changelog section to README for release traceability
+
+### v1.2.0
+- Added `ZeroTrustScorecard` — zero-trust posture assessment across identity, device, network, and data layers
+- Added `IncidentResponsePlaybookGenerator` — auto-generate CIS-aligned IR playbooks from scorecard findings
+- Expanded SEO keywords for PyPI discoverability
+
+### v1.0.1
+- Advanced features: pipeline, caching, validation, diff/trend, streaming, audit log
+
+### v1.0.0
+- Initial release: CIS Controls v8 assessment, risk scoring, maturity scoring, remediation roadmap
+
 ## License
 
 MIT
