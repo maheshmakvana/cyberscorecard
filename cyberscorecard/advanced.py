@@ -879,3 +879,359 @@ class _LogSpan:
     def __exit__(self, *args: Any) -> None:
         elapsed = round((time.monotonic() - self._t0) * 1000, 2)
         logger.debug("[span:end] service=%s operation=%s elapsed_ms=%s", self._service, self._name, elapsed)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPERT v1.2.0: ZERO TRUST SCORECARD
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Zero Trust pillars mapped to CIS control IDs that satisfy them
+_ZT_PILLAR_CONTROLS: Dict[str, Dict[str, Any]] = {
+    "Identity": {
+        "description": "Verify every identity with strong authentication before granting access.",
+        "controls": ["CIS-5.2", "CIS-5.4", "CIS-6.3"],
+        "weight": 0.25,
+    },
+    "Devices": {
+        "description": "Ensure only compliant, managed devices access resources.",
+        "controls": ["CIS-1.1", "CIS-2.1", "CIS-4.1"],
+        "weight": 0.20,
+    },
+    "Network": {
+        "description": "Segment networks and encrypt all traffic in transit.",
+        "controls": ["CIS-9.4", "CIS-12.1"],
+        "weight": 0.20,
+    },
+    "Applications": {
+        "description": "Secure application access with least-privilege and patching.",
+        "controls": ["CIS-7.1", "CIS-3.3"],
+        "weight": 0.15,
+    },
+    "Data": {
+        "description": "Classify and protect data at rest and in transit.",
+        "controls": ["CIS-3.3", "CIS-8.2"],
+        "weight": 0.10,
+    },
+    "Visibility": {
+        "description": "Continuous monitoring and threat detection across all pillars.",
+        "controls": ["CIS-17.1"],
+        "weight": 0.10,
+    },
+}
+
+
+@dataclass
+class ZeroTrustPillarScore:
+    """Score for a single Zero Trust pillar."""
+    pillar: str
+    description: str
+    coverage: float       # 0.0 – 1.0
+    weighted_score: float
+    gap_controls: List[str]
+    maturity: str         # "initial", "developing", "defined", "advanced"
+
+
+@dataclass
+class ZeroTrustAssessment:
+    """Overall Zero Trust posture assessment derived from a SecurityScorecard."""
+    org_id: str
+    zt_score: float            # 0.0 – 100.0
+    maturity: str
+    pillar_scores: List[ZeroTrustPillarScore]
+    critical_gaps: List[str]
+    next_steps: List[str]
+
+    def summary(self) -> Dict[str, Any]:
+        return {
+            "org_id": self.org_id,
+            "zt_score": round(self.zt_score, 1),
+            "maturity": self.maturity,
+            "critical_gaps": self.critical_gaps,
+            "pillar_scores": [
+                {"pillar": p.pillar, "coverage": round(p.coverage, 3), "maturity": p.maturity}
+                for p in self.pillar_scores
+            ],
+        }
+
+
+class ZeroTrustScorecard:
+    """
+    Derive a Zero Trust Architecture (ZTA) posture score from a SecurityScorecard.
+
+    Maps CIS Controls v8 IG1 implementation status onto NIST SP 800-207 Zero Trust
+    pillars (Identity, Devices, Network, Applications, Data, Visibility) and
+    produces a weighted ZT score (0–100) with per-pillar gap analysis and
+    next-step recommendations.
+
+    Usage::
+
+        zt = ZeroTrustScorecard()
+        assessment = zt.assess(scorecard)
+        print(assessment.zt_score)          # e.g. 62.5
+        print(zt.to_markdown(assessment))
+    """
+
+    def assess(self, scorecard: SecurityScorecard) -> ZeroTrustAssessment:
+        """Produce a full Zero Trust posture assessment."""
+        implemented = {
+            c.control_id for c in scorecard.controls
+            if c.status.value in ("implemented", "not_applicable")
+        }
+        partial = {c.control_id for c in scorecard.controls if c.status.value == "partial"}
+
+        pillar_scores: List[ZeroTrustPillarScore] = []
+        total_weighted = 0.0
+        critical_gaps: List[str] = []
+
+        for pillar, meta in _ZT_PILLAR_CONTROLS.items():
+            controls = meta["controls"]
+            weight = meta["weight"]
+            scores = []
+            gaps = []
+            for cid in controls:
+                if cid in implemented:
+                    scores.append(1.0)
+                elif cid in partial:
+                    scores.append(0.5)
+                else:
+                    scores.append(0.0)
+                    gaps.append(cid)
+            coverage = sum(scores) / len(scores) if scores else 0.0
+            weighted = coverage * weight
+            total_weighted += weighted
+
+            if coverage < 0.4:
+                mat = "initial"
+            elif coverage < 0.65:
+                mat = "developing"
+            elif coverage < 0.85:
+                mat = "defined"
+            else:
+                mat = "advanced"
+
+            if coverage < 0.4 and pillar in ("Identity", "Devices"):
+                critical_gaps.extend(gaps)
+
+            pillar_scores.append(ZeroTrustPillarScore(
+                pillar=pillar,
+                description=meta["description"],
+                coverage=coverage,
+                weighted_score=weighted,
+                gap_controls=gaps,
+                maturity=mat,
+            ))
+
+        zt_score = round(total_weighted * 100.0, 1)
+        if zt_score < 30:
+            overall_mat = "initial"
+        elif zt_score < 55:
+            overall_mat = "developing"
+        elif zt_score < 75:
+            overall_mat = "defined"
+        else:
+            overall_mat = "advanced"
+
+        next_steps = self._next_steps(pillar_scores)
+        return ZeroTrustAssessment(
+            org_id=scorecard.org_id,
+            zt_score=zt_score,
+            maturity=overall_mat,
+            pillar_scores=pillar_scores,
+            critical_gaps=list(dict.fromkeys(critical_gaps)),
+            next_steps=next_steps,
+        )
+
+    def _next_steps(self, pillar_scores: List[ZeroTrustPillarScore]) -> List[str]:
+        """Generate ordered next-step recommendations targeting weakest pillars first."""
+        steps: List[str] = []
+        for ps in sorted(pillar_scores, key=lambda x: x.coverage):
+            if ps.gap_controls:
+                cids = ", ".join(ps.gap_controls[:3])
+                steps.append(
+                    f"Improve {ps.pillar} pillar (currently {ps.maturity}): "
+                    f"implement {cids}."
+                )
+            if len(steps) >= 5:
+                break
+        return steps
+
+    def to_markdown(self, assessment: ZeroTrustAssessment) -> str:
+        """Render a full Zero Trust posture Markdown report."""
+        lines = [
+            f"# Zero Trust Posture Report — {assessment.org_id}",
+            f"**ZT Score**: {assessment.zt_score} / 100  |  **Maturity**: {assessment.maturity.upper()}",
+            "",
+            "## Pillar Scores",
+            "",
+            "| Pillar | Coverage | Maturity | Gap Controls |",
+            "|--------|----------|----------|--------------|",
+        ]
+        for ps in assessment.pillar_scores:
+            gaps = ", ".join(ps.gap_controls) if ps.gap_controls else "—"
+            lines.append(
+                f"| {ps.pillar} | {ps.coverage:.0%} | {ps.maturity.upper()} | {gaps} |"
+            )
+        lines += ["", "## Next Steps", ""]
+        for step in assessment.next_steps:
+            lines.append(f"- {step}")
+        return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXPERT v1.2.0: INCIDENT RESPONSE PLAYBOOK GENERATOR
+# ─────────────────────────────────────────────────────────────────────────────
+
+_IR_PLAYBOOK_TEMPLATES: Dict[str, List[str]] = {
+    "ransomware": [
+        "1. DETECT: Identify affected hosts via EDR alerts or file-change monitoring.",
+        "2. CONTAIN: Isolate affected systems from the network immediately.",
+        "3. ERADICATE: Remove malware; wipe and restore from known-good backup.",
+        "4. RECOVER: Restore systems from clean backups; apply pending patches.",
+        "5. POST-INCIDENT: Conduct forensic analysis; identify patient-zero; report to law enforcement.",
+        "6. IMPROVE: Review CIS-8.2 (Backup) and CIS-7.1 (Vuln Mgmt) gaps; test backups monthly.",
+    ],
+    "phishing": [
+        "1. DETECT: User reports suspicious email; check mail gateway logs.",
+        "2. CONTAIN: Remove phishing email from all inboxes; block sender domain.",
+        "3. ASSESS: Determine if credentials were submitted; check for unauthorised logins.",
+        "4. REMEDIATE: Reset compromised credentials; enable MFA (CIS-6.3).",
+        "5. NOTIFY: Alert affected users; consider regulatory notification if PII exposed.",
+        "6. IMPROVE: Run phishing simulation; reinforce security awareness training (CIS-14.1).",
+    ],
+    "credential_compromise": [
+        "1. DETECT: Unusual login patterns or MFA bypass alerts.",
+        "2. CONTAIN: Disable compromised accounts; invalidate active sessions.",
+        "3. INVESTIGATE: Review access logs for lateral movement.",
+        "4. REMEDIATE: Force password reset; enforce MFA on all accounts (CIS-6.3).",
+        "5. RECOVER: Review permissions granted during compromise window; revoke excess access.",
+        "6. IMPROVE: Audit privileged accounts (CIS-5.2, CIS-5.4); implement PAM tooling.",
+    ],
+    "data_breach": [
+        "1. DETECT: DLP alert, SIEM anomaly, or third-party notification.",
+        "2. CONTAIN: Revoke access to affected data store; disable compromised service accounts.",
+        "3. ASSESS: Determine scope — records count, data classification, affected users.",
+        "4. NOTIFY: Engage legal and compliance; notify regulator within required timeframe.",
+        "5. REMEDIATE: Patch exploited vulnerability; rotate secrets; segment affected network.",
+        "6. IMPROVE: Implement data classification (CIS-3.3) and encryption at rest (CIS-9.4).",
+    ],
+    "insider_threat": [
+        "1. DETECT: UEBA alert, anomalous data export, or HR notification.",
+        "2. CONTAIN: Immediately revoke access; preserve evidence before account deletion.",
+        "3. INVESTIGATE: Audit access logs; preserve forensic copy of activity.",
+        "4. ESCALATE: Engage HR, legal, and law enforcement as appropriate.",
+        "5. RECOVER: Review data accessed or exfiltrated; notify affected parties.",
+        "6. IMPROVE: Implement least-privilege access reviews quarterly (CIS-5.4); enable DLP.",
+    ],
+    "generic": [
+        "1. DETECT: Identify and confirm the incident via alert, ticket, or report.",
+        "2. CONTAIN: Limit the blast radius — isolate affected assets.",
+        "3. ERADICATE: Remove root cause — patch, remove malware, revoke access.",
+        "4. RECOVER: Restore services from clean state; validate integrity.",
+        "5. COMMUNICATE: Notify stakeholders, legal, and regulators as required.",
+        "6. IMPROVE: Conduct post-incident review; update controls based on gaps identified.",
+    ],
+}
+
+_SEVERITY_TO_INCIDENT_TYPE: Dict[str, str] = {
+    "ransomware": "ransomware",
+    "phishing": "phishing",
+    "credential": "credential_compromise",
+    "data": "data_breach",
+    "insider": "insider_threat",
+}
+
+
+@dataclass
+class IRPlaybook:
+    """A generated Incident Response playbook for an organisation."""
+    org_id: str
+    incident_type: str
+    severity: str
+    triggered_by: List[str]   # finding_ids that triggered this playbook
+    steps: List[str]
+    generated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "org_id": self.org_id,
+            "incident_type": self.incident_type,
+            "severity": self.severity,
+            "triggered_by": self.triggered_by,
+            "steps": self.steps,
+            "generated_at": self.generated_at,
+        }
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"# IR Playbook — {self.incident_type.replace('_', ' ').title()}",
+            f"**Org**: {self.org_id}  |  **Severity**: {self.severity.upper()}  |  **Generated**: {self.generated_at}",
+            f"**Triggered by findings**: {', '.join(self.triggered_by) or 'manual'}",
+            "",
+            "## Response Steps",
+            "",
+        ]
+        for step in self.steps:
+            lines.append(step)
+        return "\n".join(lines)
+
+
+class IncidentResponsePlaybookGenerator:
+    """
+    Auto-generate Incident Response playbooks from a SecurityScorecard's findings.
+
+    Classifies the most likely incident type from open critical/high findings and
+    returns a step-by-step IR playbook aligned with NIST SP 800-61 phases
+    (Detect → Contain → Eradicate → Recover → Improve).
+
+    Usage::
+
+        gen = IncidentResponsePlaybookGenerator()
+        playbook = gen.generate(scorecard)
+        print(playbook.to_markdown())
+
+        # Or generate for a specific incident type:
+        playbook = gen.generate(scorecard, incident_type="ransomware")
+    """
+
+    def generate(
+        self,
+        scorecard: SecurityScorecard,
+        incident_type: Optional[str] = None,
+    ) -> IRPlaybook:
+        """Generate an IR playbook, inferring incident type from findings if not given."""
+        triggered = [f.finding_id for f in scorecard.findings if f.severity.value in ("critical", "high")]
+        if incident_type is None:
+            incident_type = self._infer_type(scorecard)
+        steps = _IR_PLAYBOOK_TEMPLATES.get(incident_type, _IR_PLAYBOOK_TEMPLATES["generic"])
+        severity = "critical" if any(
+            f.severity.value == "critical" for f in scorecard.findings
+        ) else "high"
+        return IRPlaybook(
+            org_id=scorecard.org_id,
+            incident_type=incident_type,
+            severity=severity,
+            triggered_by=triggered[:10],
+            steps=steps,
+        )
+
+    def _infer_type(self, scorecard: SecurityScorecard) -> str:
+        """Guess most likely incident type from finding titles."""
+        text = " ".join(f.title.lower() + " " + f.description.lower() for f in scorecard.findings)
+        for keyword, itype in _SEVERITY_TO_INCIDENT_TYPE.items():
+            if keyword in text:
+                return itype
+        return "generic"
+
+    def all_playbooks(self, scorecard: SecurityScorecard) -> List[IRPlaybook]:
+        """Generate playbooks for all incident types; useful for tabletop exercises."""
+        return [self.generate(scorecard, itype) for itype in _IR_PLAYBOOK_TEMPLATES]
+
+    def to_markdown(self, playbooks: List[IRPlaybook]) -> str:
+        """Render an index of all playbooks."""
+        lines = [f"# IR Playbook Library — {playbooks[0].org_id if playbooks else ''}", ""]
+        for pb in playbooks:
+            lines.append(f"## {pb.incident_type.replace('_', ' ').title()}")
+            for step in pb.steps:
+                lines.append(f"  {step}")
+            lines.append("")
+        return "\n".join(lines)

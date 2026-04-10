@@ -25,6 +25,8 @@ from cyberscorecard.advanced import (
     ComplianceGapMapper,
     ControlRule,
     ControlValidator,
+    IRPlaybook,
+    IncidentResponsePlaybookGenerator,
     PIIScrubber,
     RateLimiter,
     RegressionTracker,
@@ -36,6 +38,9 @@ from cyberscorecard.advanced import (
     SecuritySpanEmitter,
     ThreatIndicator,
     ThreatIntelFeed,
+    ZeroTrustAssessment,
+    ZeroTrustPillarScore,
+    ZeroTrustScorecard,
     abatch_assess,
     batch_assess,
     diff_scorecards,
@@ -43,7 +48,7 @@ from cyberscorecard.advanced import (
     stream_findings,
 )
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __all__ = [
     # Core
     "SecurityAssessor",
@@ -80,11 +85,17 @@ __all__ = [
     "RegressionTracker",
     "AuditLog",
     "PIIScrubber",
-    # Advanced — expert
+    # Advanced — expert v1.1.0
     "ThreatIntelFeed",
     "ThreatIndicator",
     "AttackSurfaceMapper",
     "ComplianceGapMapper",
     "RemediationRoadmapGenerator",
     "SecuritySpanEmitter",
+    # Advanced — expert v1.2.0
+    "ZeroTrustScorecard",
+    "ZeroTrustAssessment",
+    "ZeroTrustPillarScore",
+    "IncidentResponsePlaybookGenerator",
+    "IRPlaybook",
 ]

@@ -5,9 +5,9 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name="cyberscorecard",
-    version="1.0.1",
+    version="1.2.0",
     author="",
-    description="SMB cybersecurity governance scorecard — CIS Controls v8 assessment, risk findings, maturity scoring, and remediation roadmap for small businesses",
+    description="SMB cybersecurity governance scorecard — CIS Controls v8, Zero Trust scoring, IR playbook generation, threat intelligence feed, attack surface mapping, compliance gap analysis",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/cyberscorecard-py/cyberscorecard",
@@ -35,6 +35,9 @@ setup(
         "SMB security assessment", "cyber risk scoring",
         "security maturity model", "NIST CSF python",
         "cybersecurity compliance SMB", "security posture assessment",
-        "vulnerability management python",
+        "vulnerability management python", "zero trust architecture python",
+        "zero trust scorecard", "incident response playbook python",
+        "threat intelligence feed python", "NIST SP 800-207",
+        "cybersecurity automation SMB", "attack surface mapping",
     ],
 )
