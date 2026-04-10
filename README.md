@@ -213,3 +213,21 @@ log.record("finding_resolved", "ACME-001", detail="CIS-3.3")
 ## License
 
 MIT
+
+## Contributing
+
+Contributions are welcome! Here's how to get started:
+
+1. Fork the repository on [GitHub](https://github.com/maheshmakvana/cyberscorecard)
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make your changes and add tests
+4. Run the test suite: `pytest tests/ -v`
+5. Submit a pull request
+
+Please open an issue first for major changes to discuss the approach.
+
+## Author
+
+**Mahesh Makvana** — [GitHub](https://github.com/maheshmakvana) · [PyPI](https://pypi.org/user/maheshmakvana/)
+
+MIT License
