@@ -17,19 +17,25 @@ from cyberscorecard.exceptions import (
     ValidationError,
 )
 from cyberscorecard.advanced import (
+    AttackSurfaceMapper,
     AuditLog,
     AssessmentPipeline,
     AssessmentProfiler,
     CancellationToken,
+    ComplianceGapMapper,
     ControlRule,
     ControlValidator,
     PIIScrubber,
     RateLimiter,
     RegressionTracker,
+    RemediationRoadmapGenerator,
     ScoreTrend,
     ScorecardCache,
     ScorecardDiff,
     ScorecardExporter,
+    SecuritySpanEmitter,
+    ThreatIndicator,
+    ThreatIntelFeed,
     abatch_assess,
     batch_assess,
     diff_scorecards,
@@ -37,7 +43,7 @@ from cyberscorecard.advanced import (
     stream_findings,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = [
     # Core
     "SecurityAssessor",
@@ -55,7 +61,7 @@ __all__ = [
     "AssessmentError",
     "ValidationError",
     "ReportError",
-    # Advanced
+    # Advanced — base
     "ScorecardCache",
     "AssessmentPipeline",
     "ControlValidator",
@@ -74,4 +80,11 @@ __all__ = [
     "RegressionTracker",
     "AuditLog",
     "PIIScrubber",
+    # Advanced — expert
+    "ThreatIntelFeed",
+    "ThreatIndicator",
+    "AttackSurfaceMapper",
+    "ComplianceGapMapper",
+    "RemediationRoadmapGenerator",
+    "SecuritySpanEmitter",
 ]

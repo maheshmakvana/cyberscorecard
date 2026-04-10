@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name="cyberscorecard",
-    version="1.0.0",
+    version="1.0.1",
     author="",
     description="SMB cybersecurity governance scorecard — CIS Controls v8 assessment, risk findings, maturity scoring, and remediation roadmap for small businesses",
     long_description=long_description,
